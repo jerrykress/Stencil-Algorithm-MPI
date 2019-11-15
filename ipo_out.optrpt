@@ -1,0 +1,265 @@
+Intel(R) Advisor can now assist with vectorization and show optimization
+  report messages with your source code.
+See "https://software.intel.com/en-us/intel-advisor-xe" for details.
+
+
+    Report from: Interprocedural optimizations [ipo]
+
+INLINING OPTION VALUES:
+  -inline-factor: 100
+  -inline-min-size: 30
+  -inline-max-size: 230
+  -inline-max-total-size: 2000
+  -inline-max-per-routine: disabled
+  -inline-max-per-compile: disabled
+
+
+Begin optimization report for: main(int, char **)
+
+    Report from: Interprocedural optimizations [ipo]
+
+INLINE REPORT: (main(int, char **)) [1] stencil.c(17,1)
+  -> INLINE: (25,12) atoi(const char *)
+     {{ Inlining of routines from system headers is omitted. Use -qopt-report=3 to view full report. }}
+  -> INLINE: (26,12) atoi(const char *)
+     {{ Inlining of routines from system headers is omitted. Use -qopt-report=3 to view full report. }}
+  -> INLINE: (27,16) atoi(const char *)
+     {{ Inlining of routines from system headers is omitted. Use -qopt-report=3 to view full report. }}
+  -> INLINE: (39,3) init_image(const int, const int, const int, const int, float *, float *)
+  -> INLINE: (42,16) wtime(void)
+  -> INLINE: (44,5) stencil(const int, const int, const int, const int, float *, float *)
+  -> INLINE: (45,5) stencil(const int, const int, const int, const int, float *, float *)
+  -> INLINE: (47,16) wtime(void)
+  -> INLINE: (54,3) output_image(const char *, const int, const int, const int, const int, float *)
+
+
+    Report from: Loop nest, Vector & Auto-parallelization optimizations [loop, vec, par]
+
+
+LOOP BEGIN at stencil.c(80,5) inlined into stencil.c(39,3)
+   remark #25444: Loopnest Interchanged: ( 1 2 ) --> ( 2 1 )
+   remark #15542: loop was not vectorized: inner loop was already vectorized   [ stencil.c(80,5) ]
+
+   LOOP BEGIN at stencil.c(79,3) inlined into stencil.c(39,3)
+   <Peeled loop for vectorization>
+   LOOP END
+
+   LOOP BEGIN at stencil.c(79,3) inlined into stencil.c(39,3)
+      remark #15301: PERMUTED LOOP WAS VECTORIZED
+   LOOP END
+
+   LOOP BEGIN at stencil.c(79,3) inlined into stencil.c(39,3)
+   <Remainder loop for vectorization>
+      remark #15301: REMAINDER LOOP WAS VECTORIZED
+   LOOP END
+
+   LOOP BEGIN at stencil.c(79,3) inlined into stencil.c(39,3)
+   <Remainder loop for vectorization>
+   LOOP END
+LOOP END
+
+LOOP BEGIN at stencil.c(88,3) inlined into stencil.c(39,3)
+   remark #15344: loop was not vectorized: vector dependence prevents vectorization. First dependence is shown below. Use level 5 report for details
+   remark #15346: vector dependence: assumed OUTPUT dependence between image[j+i*(ny+2)] (95:13) and image[j+i*(ny+2)] (95:13)
+
+   LOOP BEGIN at stencil.c(89,5) inlined into stencil.c(39,3)
+      remark #15344: loop was not vectorized: vector dependence prevents vectorization. First dependence is shown below. Use level 5 report for details
+      remark #15346: vector dependence: assumed OUTPUT dependence between image[j+i*(ny+2)] (95:13) and image[j+i*(ny+2)] (95:13)
+
+      LOOP BEGIN at stencil.c(93,9) inlined into stencil.c(39,3)
+         remark #15344: loop was not vectorized: vector dependence prevents vectorization. First dependence is shown below. Use level 5 report for details
+         remark #15346: vector dependence: assumed OUTPUT dependence between image[j+i*(ny+2)] (95:13) and image[j+i*(ny+2)] (95:13)
+
+         LOOP BEGIN at stencil.c(94,11) inlined into stencil.c(39,3)
+            remark #15335: loop was not vectorized: vectorization possible but seems inefficient. Use vector always directive or -vec-threshold0 to override 
+            remark #25439: unrolled with remainder by 2  
+         LOOP END
+
+         LOOP BEGIN at stencil.c(94,11) inlined into stencil.c(39,3)
+         <Remainder>
+         LOOP END
+      LOOP END
+   LOOP END
+LOOP END
+
+LOOP BEGIN at stencil.c(43,3)
+   remark #15542: loop was not vectorized: inner loop was already vectorized
+
+   LOOP BEGIN at stencil.c(64,3) inlined into stencil.c(44,5)
+      remark #15542: loop was not vectorized: inner loop was already vectorized
+
+      LOOP BEGIN at stencil.c(66,5) inlined into stencil.c(44,5)
+      <Peeled loop for vectorization>
+         remark #25456: Number of Array Refs Scalar Replaced In Loop: 1
+      LOOP END
+
+      LOOP BEGIN at stencil.c(66,5) inlined into stencil.c(44,5)
+         remark #15300: LOOP WAS VECTORIZED
+      LOOP END
+
+      LOOP BEGIN at stencil.c(66,5) inlined into stencil.c(44,5)
+      <Remainder loop for vectorization>
+         remark #15301: REMAINDER LOOP WAS VECTORIZED
+      LOOP END
+
+      LOOP BEGIN at stencil.c(66,5) inlined into stencil.c(44,5)
+      <Remainder loop for vectorization>
+         remark #25456: Number of Array Refs Scalar Replaced In Loop: 1
+      LOOP END
+   LOOP END
+
+   LOOP BEGIN at stencil.c(64,3) inlined into stencil.c(45,5)
+      remark #15542: loop was not vectorized: inner loop was already vectorized
+
+      LOOP BEGIN at stencil.c(66,5) inlined into stencil.c(45,5)
+      <Peeled loop for vectorization>
+         remark #25456: Number of Array Refs Scalar Replaced In Loop: 1
+      LOOP END
+
+      LOOP BEGIN at stencil.c(66,5) inlined into stencil.c(45,5)
+         remark #15300: LOOP WAS VECTORIZED
+      LOOP END
+
+      LOOP BEGIN at stencil.c(66,5) inlined into stencil.c(45,5)
+      <Remainder loop for vectorization>
+         remark #15301: REMAINDER LOOP WAS VECTORIZED
+      LOOP END
+
+      LOOP BEGIN at stencil.c(66,5) inlined into stencil.c(45,5)
+      <Remainder loop for vectorization>
+         remark #25456: Number of Array Refs Scalar Replaced In Loop: 1
+      LOOP END
+   LOOP END
+LOOP END
+
+LOOP BEGIN at stencil.c(122,5) inlined into stencil.c(54,3)
+   remark #25444: Loopnest Interchanged: ( 1 2 ) --> ( 2 1 )
+   remark #15542: loop was not vectorized: inner loop was already vectorized   [ stencil.c(122,5) ]
+
+   LOOP BEGIN at stencil.c(121,3) inlined into stencil.c(54,3)
+   <Peeled loop for vectorization>
+   LOOP END
+
+   LOOP BEGIN at stencil.c(121,3) inlined into stencil.c(54,3)
+      remark #15301: PERMUTED LOOP WAS VECTORIZED
+   LOOP END
+
+   LOOP BEGIN at stencil.c(121,3) inlined into stencil.c(54,3)
+   <Remainder loop for vectorization>
+      remark #15301: REMAINDER LOOP WAS VECTORIZED
+   LOOP END
+
+   LOOP BEGIN at stencil.c(121,3) inlined into stencil.c(54,3)
+   <Remainder loop for vectorization>
+   LOOP END
+LOOP END
+
+LOOP BEGIN at stencil.c(128,3) inlined into stencil.c(54,3)
+   remark #15344: loop was not vectorized: vector dependence prevents vectorization. First dependence is shown below. Use level 5 report for details
+   remark #15346: vector dependence: assumed OUTPUT dependence between call:fputc(int, FILE *) (130:7) and call:fputc(int, FILE *) (130:7)
+
+   LOOP BEGIN at stencil.c(129,5) inlined into stencil.c(54,3)
+      remark #15527: loop was not vectorized: function call to fputc(int, FILE *) cannot be vectorized   [ stencil.c(130,7) ]
+   LOOP END
+LOOP END
+
+    Report from: Code generation optimizations [cg]
+
+stencil.c(67,28):remark #34060: alignment of adjacent dense (unit-strided stencil) loads is (alignment, offset): (1, 0)
+stencil.c(67,28):remark #34050: adjacent dense (unit-strided stencil) loads seem unprofitable to optimize.
+stencil.c(67,28):remark #34055: adjacent dense (unit-strided stencil) loads are not optimized. Details: stride { 4 }, step { 4 }, types { F32-V256, F32-V256, F32-V256 }, number of elements { 8 }, select mask { 0x000000007 }.
+stencil.c(67,28):remark #34060: alignment of adjacent dense (unit-strided stencil) loads is (alignment, offset): (1, 0)
+stencil.c(67,28):remark #34050: adjacent dense (unit-strided stencil) loads seem unprofitable to optimize.
+stencil.c(67,28):remark #34055: adjacent dense (unit-strided stencil) loads are not optimized. Details: stride { 4 }, step { 4 }, types { F32-V256, F32-V256, F32-V256 }, number of elements { 8 }, select mask { 0x000000007 }.
+stencil.c(67,28):remark #34060: alignment of adjacent dense (unit-strided stencil) loads is (alignment, offset): (1, 0)
+stencil.c(67,28):remark #34050: adjacent dense (unit-strided stencil) loads seem unprofitable to optimize.
+stencil.c(67,28):remark #34055: adjacent dense (unit-strided stencil) loads are not optimized. Details: stride { 4 }, step { 4 }, types { F32-V128, F32-V128, F32-V128 }, number of elements { 4 }, select mask { 0x000000007 }.
+stencil.c(67,28):remark #34060: alignment of adjacent dense (unit-strided stencil) loads is (alignment, offset): (1, 0)
+stencil.c(67,28):remark #34050: adjacent dense (unit-strided stencil) loads seem unprofitable to optimize.
+stencil.c(67,28):remark #34055: adjacent dense (unit-strided stencil) loads are not optimized. Details: stride { 4 }, step { 4 }, types { F32-V256, F32-V256, F32-V256 }, number of elements { 8 }, select mask { 0x000000007 }.
+stencil.c(67,28):remark #34060: alignment of adjacent dense (unit-strided stencil) loads is (alignment, offset): (1, 0)
+stencil.c(67,28):remark #34050: adjacent dense (unit-strided stencil) loads seem unprofitable to optimize.
+stencil.c(67,28):remark #34055: adjacent dense (unit-strided stencil) loads are not optimized. Details: stride { 4 }, step { 4 }, types { F32-V256, F32-V256, F32-V256 }, number of elements { 8 }, select mask { 0x000000007 }.
+stencil.c(67,28):remark #34060: alignment of adjacent dense (unit-strided stencil) loads is (alignment, offset): (1, 0)
+stencil.c(67,28):remark #34050: adjacent dense (unit-strided stencil) loads seem unprofitable to optimize.
+stencil.c(67,28):remark #34055: adjacent dense (unit-strided stencil) loads are not optimized. Details: stride { 4 }, step { 4 }, types { F32-V128, F32-V128, F32-V128 }, number of elements { 4 }, select mask { 0x000000007 }.
+stencil.c(17,1):remark #34051: REGISTER ALLOCATION : [main] stencil.c:17
+
+    Hardware registers
+        Reserved     :    2[ rsp rip]
+        Available    :   39[ rax rdx rcx rbx rbp rsi rdi r8-r15 mm0-mm7 zmm0-zmm15]
+        Callee-save  :    6[ rbx rbp r12-r15]
+        Assigned     :   30[ rax rdx rcx rbx rsi rdi r8-r15 zmm0-zmm15]
+        
+    Routine temporaries
+        Total         :     467
+            Global    :     176
+            Local     :     291
+        Regenerable   :      45
+        Spilled       :      47
+        
+    Routine stack
+        Variables     :      36 bytes*
+            Reads     :       6 [2.64e+00 ~ 0.1%]
+            Writes    :       2 [2.00e+00 ~ 0.1%]
+        Spills        :     328 bytes*
+            Reads     :     106 [1.40e+02 ~ 3.8%]
+            Writes    :      69 [4.41e+01 ~ 1.2%]
+    
+    Notes
+    
+        *Non-overlapping variables and spills may share stack space,
+         so the total stack size might be less than this.
+    
+
+===========================================================================
+
+Begin optimization report for: output_image(const char *, const int, const int, const int, const int, float *)
+
+    Report from: Interprocedural optimizations [ipo]
+
+DEAD STATIC FUNCTION: (output_image(const char *, const int, const int, const int, const int, float *)) stencil.c(106,1)
+
+===========================================================================
+
+Begin optimization report for: stencil(const int, const int, const int, const int, float *, float *)
+
+    Report from: Interprocedural optimizations [ipo]
+
+DEAD STATIC FUNCTION: (stencil(const int, const int, const int, const int, float *, float *)) stencil.c(61,1)
+
+===========================================================================
+
+Begin optimization report for: wtime(void)
+
+    Report from: Interprocedural optimizations [ipo]
+
+DEAD STATIC FUNCTION: (wtime(void)) stencil.c(140,1)
+
+===========================================================================
+
+Begin optimization report for: init_image(const int, const int, const int, const int, float *, float *)
+
+    Report from: Interprocedural optimizations [ipo]
+
+DEAD STATIC FUNCTION: (init_image(const int, const int, const int, const int, float *, float *)) stencil.c(77,1)
+
+===========================================================================
+
+    Report from: Profile guided optimizations [pgo]
+
+
+
+Profile feedback used a statically estimated profile for the following routines:
+
+  File: stencil.c
+        main(int, char **)[Line    17]
+
+
+  0 out of 1 routine(s) used training profile data for PGO feedback
+  0 out of 1 routine(s) were unable to use training profile data for PGO feedback
+  0 out of 1 routine(s) were unable to find training profile data for PGO feedback
+  1 out of 1 routine(s) used a static estimate profile for PGO feedback
+
+
+
