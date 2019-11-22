@@ -90,11 +90,9 @@ int main(int argc, char* argv[])
     MPI_Cart_coords(comcord, rank, 2, coords); //Get cartesian co-ordinates of a particular rank:
     MPI_Barrier(MPI_COMM_WORLD);
 
+    //calculate default tile size (excl. halo)
     int tile_width = ceil((width - 2)/dims[0]); // Default tile size, int col = dims[0];
     int tile_height = ceil((height -2)/dims[1]); // Default tile size, int row = dims[1];
-    //Setup this tile
-    float* tile = _mm_malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2), 64);
-    float* tmp_tile = _mm_malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2), 64);
     //Tile receive bounds (excl. halo)
     int y_start = 1 + tile_height * (coords[1]);
     int y_end   = 0 + tile_height * (coords[1] + 1);
@@ -105,8 +103,17 @@ int main(int argc, char* argv[])
     //Halo information, encodes actual tile size
     int h_halo_size = tile_width + 2; //For complete tile
     int v_halo_size = tile_height + 2;  //For complete tile
-    if (coords[0] == dims[0] - 1) h_halo_size = nx - (dims[0]-1) * tile_width + 2; //Adjust for incomplete tile
-    if (coords[1] == dims[1] - 1) v_halo_size = ny - (dims[1]-1) * tile_height + 2; //Adjust for incomplete tile
+    if (coords[0] == dims[0] - 1){
+      h_halo_size = nx - (dims[0] - 1) * tile_width + 2; //Adjust for incomplete tile
+      tile_width = h_halo_size - 2;
+    } 
+    if (coords[1] == dims[1] - 1){
+      v_halo_size = ny - (dims[1] - 1) * tile_height + 2; //Adjust for incomplete tile
+      tile_height = v_halo_size - 2;
+    }
+    //Setup this tile
+    float* tile = _mm_malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2), 64);
+    float* tmp_tile = _mm_malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2), 64);
    
     //Copy from original image (incl. halo)
     for(int x_offset = 0 ; x_offset < tile_width + 2; x_offset++){
@@ -115,6 +122,7 @@ int main(int argc, char* argv[])
         tmp_tile[y_offset * tile_width + x_offset] = image[(y_start + y_offset) * width + (x_start + x_offset)];
       }
     }
+
     //Calculate neighbor positions (rank)
     int t_rank = coords[0] * dims[0] + coords[1];
     int neighbors[4] = {0,0,0,0};
@@ -132,15 +140,42 @@ int main(int argc, char* argv[])
     }
     double toc = wtime();
 
-    //TODO: Merge and Output
+    //TODO: Merge to rank 0
     if(rank == MASTER){
+      //save rank 0 to original image (excl. halo)
+      for (int x_offset = 1; x_offset < tile_width + 1; x_offset++){
+        for (int y_offset = 1; y_offset < tile_height + 1; y_offset++){
+          image[(y_start + y_offset) * width + (x_start + x_offset)]  = tile[y_offset * tile_width + x_offset];
+        }
+      }
+
+      //save other tiles
+      for (int receive_rank = 1; receive_rank < size; receive_rank ++){
+        int tile_meta_i[4] = {0, 0, 0, 0}; //x_start, y_start, tile_width, y_end
+        MPI_Recv(&tile_meta_i[0], BUFSIZ, MPI_INT, receive_rank, tag, MPI_COMM_WORLD, &status);
+        for(int i = tile_meta_i[1]; i < tile_meta_i[3] + 1; i++){
+          MPI_Recv(&image[i * width + tile_meta_i[0]], BUFSIZ, MPI_FLOAT, receive_rank, tag, MPI_COMM_WORLD, &status);
+        }
+      }
+
       printf("------------------------------------\n");
       printf(" runtime: %lf s\n", toc - tic);
       printf("------------------------------------\n");
 
       output_image(OUTPUT_FILE, nx, ny, width, height, image);
+
+    } else {
+      //send to rank 0
+      int tile_meta_o[4] = {x_start, y_start, tile_width, y_end};
+      MPI_Send(&tile_meta_o[0], 4, MPI_INT, 0, tag, MPI_COMM_WORLD);
+      for(int i = 1; i < v_halo_size - 1; i++){
+        MPI_Send(&tile[i*h_halo_size + 1], tile_width, MPI_FLOAT, 0, tag, MPI_COMM_WORLD);
+      }
+
     }
 
+    _mm_free(tile);
+    _mm_free(tmp_tile);
   }
 
   _mm_free(image);
@@ -152,8 +187,8 @@ int main(int argc, char* argv[])
 void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, int * coords, int * dims){
     //float * tile, int rows, int cols
     //Halo order: UP, DOWN, LEFT, RIGHT
-    int counts[4] = {h_halo_size, h_halo_size, v_halo_size, v_halo_size};
-    int offsets[4] = {0, h_halo_size, 2 * h_halo_size, 2 * h_halo_size + v_halo_size};
+    int counts[4] = {v_halo_size, v_halo_size, h_halo_size, h_halo_size};
+    int offsets[4] = {0, v_halo_size, 2 * v_halo_size, 2 * v_halo_size + h_halo_size};
     int vdisp = 0;
     int hdisp = 0;
 
@@ -165,21 +200,21 @@ void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, 
     if (coords[0] == 0) hdisp = 0;
     else hdisp = 1;
 
-    // UP
-    for (int i = 1; i < counts[0] - 1; i++) {
-      s_buffer[i + offsets[0]] = tile[1*h_halo_size + i]; //(i,1)
-    }
-    // DOWN
-    for (int i = 1; i < counts[1] - 1; i++) {
-      s_buffer[i + offsets[1]] = tile[(v_halo_size - 2)*h_halo_size + i]; //(i,v_halo_size -2)
-    }
     // LEFT
-    for (int i = 1; i < counts[2] - 1; i++) {
-      s_buffer[i + offsets[2]] = tile[i*h_halo_size + 1]; //(1,i)
+    for (int i = 1; i < counts[0] - 1; i++) {
+      s_buffer[i + offsets[0]] = tile[i*h_halo_size + 1]; //(1,i)
     }
     // RIGHT
+    for (int i = 1; i < counts[1] - 1; i++) {
+      s_buffer[i + offsets[1]] = tile[(i+1)*h_halo_size - 2]; //(h_halo_size -2,i)
+    }
+    // DOWN
+    for (int i = 1; i < counts[2] - 1; i++) {
+      s_buffer[i + offsets[2]] = tile[(v_halo_size - 2)*h_halo_size + i]; //(i,v_halo_size -2)
+    }
+    // UP
     for (int i = 1; i < counts[3] - 1; i++) {
-      s_buffer[i + offsets[3]] = tile[(i+1)*h_halo_size - 2]; //(h_halo_size -2,i)
+      s_buffer[i + offsets[3]] = tile[1*h_halo_size + i]; //(i,1)
     }
     
 
@@ -189,28 +224,28 @@ void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, 
     MPI_Neighbor_alltoallv(s_buffer, counts, offsets, MPI_FLOAT, r_buffer, counts, offsets, MPI_FLOAT, comcord);
 
     //TODO: Check Save in receive buffer
-    // UP
-    if (coords[1] != 0) { //If not at grid top
-      for (int i = 1; i < counts[0] - 1; i++) {
-        tile[0*h_halo_size + i] = s_buffer[i + offsets[0]]; //(i,0)
-      }
-    }
-    // DOWN
-    if (coords[1] != dims[1] - 1) { //If not at grid bottom
-      for (int i = 1; i < counts[1] - 1; i++) {
-        tile[(v_halo_size - 1)*h_halo_size + i] = s_buffer[i + offsets[1]]; //(i,v_halo_size -1)
-      }
-    }
     // LEFT
     if (coords[0] != 0) { //If not at grid left
-      for (int i = 1; i < counts[2] - 1; i++) {
-        tile[i*h_halo_size + 0] = s_buffer[i + offsets[2]]; //(0,i)
+      for (int i = 1; i < counts[0] - 1; i++) {
+        tile[i*h_halo_size + 0] = s_buffer[i + offsets[0]]; //(0,i)
       }
     }
     // RIGHT
     if (coords[0] != dims[0] - 1) { //If not at grid right
+      for (int i = 1; i < counts[1] - 1; i++) {
+        tile[(i+1)*h_halo_size - 1] = s_buffer[i + offsets[1]]; //(h_halo_size -1,i)
+      }
+    }
+    // DOWN
+    if (coords[1] != dims[1] - 1) { //If not at grid bottom
+      for (int i = 1; i < counts[2] - 1; i++) {
+        tile[(v_halo_size - 1)*h_halo_size + i] = s_buffer[i + offsets[2]]; //(i,v_halo_size -1)
+      }
+    }
+    // UP
+    if (coords[1] != 0) { //If not at grid top
       for (int i = 1; i < counts[3] - 1; i++) {
-        tile[(i+1)*h_halo_size - 1] = s_buffer[i + offsets[3]]; //(h_halo_size -1,i)
+        tile[0*h_halo_size + i] = s_buffer[i + offsets[3]]; //(i,0)
       }
     }
    
