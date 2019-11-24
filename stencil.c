@@ -115,10 +115,10 @@ int main(int argc, char* argv[])
     float* tmp_tile = malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2)); 
 
     //Copy from original image (incl. halo)
-    for(int x_offset = 0 ; x_offset < tile_width + 2; x_offset++){
-      for(int y_offset = 0; y_offset < tile_height + 2; y_offset++){
-        tile[y_offset * tile_width + x_offset]     = image[(y_start + y_offset) * width + (x_start + x_offset)];
-        tmp_tile[y_offset * tile_width + x_offset] = image[(y_start + y_offset) * width + (x_start + x_offset)];
+    for(int y_offset = 0; y_offset < tile_height + 2; y_offset++){
+      for(int x_offset = 0 ; x_offset < tile_width + 2; x_offset++){
+        tile[y_offset * h_halo_size + x_offset]     = image[(y_start + y_offset) * width + (x_start + x_offset)];
+        tmp_tile[y_offset * h_halo_size + x_offset] = image[(y_start + y_offset) * width + (x_start + x_offset)];
       }
     }
 
@@ -135,9 +135,9 @@ int main(int argc, char* argv[])
     //TODO: Merge to rank 0
     if(rank == MASTER){
       //save rank 0 to original image (excl. halo)
-      for (int x_offset = 1; x_offset < tile_width + 1; x_offset++){
-        for (int y_offset = 1; y_offset < tile_height + 1; y_offset++){
-          image[(y_start + y_offset) * width + (x_start + x_offset)]  = tile[y_offset * tile_width + x_offset];
+      for (int y_offset = 1; y_offset < tile_height + 1; y_offset++){
+        for (int x_offset = 1; x_offset < tile_width + 1; x_offset++){
+          image[(y_start + y_offset) * width + (x_start + x_offset)]  = tile[y_offset * h_halo_size + x_offset];
         }
       }
 
@@ -194,12 +194,12 @@ void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, 
       s_buffer[i + offsets[1]] = tile[(i+1)*h_halo_size - 2]; //(h_halo_size -2,i)
     }
     // DOWN
-    for (int i = 1; i < counts[2] - 1; i++) {
-      s_buffer[i + offsets[2]] = tile[(v_halo_size - 2)*h_halo_size + i]; //(i,v_halo_size -2)
+    for (int i = 1; i < counts[3] - 1; i++) {
+      s_buffer[i + offsets[3]] = tile[(v_halo_size - 2)*h_halo_size + i]; //(i,v_halo_size -2)
     }
     // UP
-    for (int i = 1; i < counts[3] - 1; i++) {
-      s_buffer[i + offsets[3]] = tile[1*h_halo_size + i]; //(i,1)
+    for (int i = 1; i < counts[2] - 1; i++) {
+      s_buffer[i + offsets[2]] = tile[1*h_halo_size + i]; //(i,1)
     }
     
 
@@ -208,27 +208,26 @@ void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, 
                             const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm)*/
     MPI_Neighbor_alltoallv(s_buffer, counts, offsets, MPI_FLOAT, r_buffer, counts, offsets, MPI_FLOAT, comcord);
 
-    //TODO: Check Save in receive buffer
     // LEFT
-    if (coords[0] != 0) { //If not at grid left
-      for (int i = 1; i < counts[0] - 1; i++) {
-        tile[i*h_halo_size + 0] = s_buffer[i + offsets[0]]; //(0,i)
+    if (coords[0] != 0 || 1) { //If not at grid left
+      for (int i = 1; i < counts[1] - 1; i++) {
+        tile[i*h_halo_size + 0] = s_buffer[i + offsets[1]]; //(0,i)
       }
     }
     // RIGHT
-    if (coords[0] != dims[0] - 1) { //If not at grid right
-      for (int i = 1; i < counts[1] - 1; i++) {
-        tile[(i+1)*h_halo_size - 1] = s_buffer[i + offsets[1]]; //(h_halo_size -1,i)
+    if (coords[0] != dims[0] - 1 ||1) { //If not at grid right
+      for (int i = 1; i < counts[0] - 1; i++) {
+        tile[(i+1)*h_halo_size - 1] = s_buffer[i + offsets[0]]; //(h_halo_size -1,i)
       }
     }
     // DOWN
-    if (coords[1] != dims[1] - 1) { //If not at grid bottom
+    if (coords[1] != dims[1] - 1 ||1) { //If not at grid bottom
       for (int i = 1; i < counts[2] - 1; i++) {
         tile[(v_halo_size - 1)*h_halo_size + i] = s_buffer[i + offsets[2]]; //(i,v_halo_size -1)
       }
     }
     // UP
-    if (coords[1] != 0) { //If not at grid top
+    if (coords[1] != 0||1) { //If not at grid top
       for (int i = 1; i < counts[3] - 1; i++) {
         tile[0*h_halo_size + i] = s_buffer[i + offsets[3]]; //(i,0)
       }
@@ -241,12 +240,12 @@ void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, 
 void stencil(const int nx, const int ny, const int width, const int height,
              float* image, float* tmp_image)
 {
-  int delta = height - ny;
-  int pos = 1 + height;
+  int delta = width - nx;
+  int pos = 1 + width;
   for(int i = 1; i < nx + 1; i++){
     #pragma vector
     for(int j = 1; j < ny + 1; j++){
-          tmp_image[pos] = image[pos] * 0.6f + (image[pos - 1] + image[pos + 1] + image[pos - height] + image[pos + height]) * 0.1f;
+          tmp_image[pos] = image[pos] * 0.6f + (image[pos - 1] + image[pos + 1] + image[pos - width] + image[pos + width]) * 0.1f;
           pos += 1;
     }
   pos += delta;
@@ -260,23 +259,23 @@ void init_image(const int nx, const int ny, const int width, const int height,
                 float* image, float* tmp_image)
 {
   // Zero everything
-  for (int j = 0; j < ny + 2; ++j) {
-    for (int i = 0; i < nx + 2; ++i) {
-      image[j + i * height] = 0.0;
-      tmp_image[j + i * height] = 0.0;
+  for (int i = 0; i < nx + 2; ++i) {
+    for (int j = 0; j < ny + 2; ++j) {
+      image[i + j * width] = 0.0;
+      tmp_image[i + j * width] = 0.0;
     }
   }
 
   const int tile_size = 64;
   // checkerboard pattern
-  for (int jb = 0; jb < ny; jb += tile_size) {
-    for (int ib = 0; ib < nx; ib += tile_size) {
+  for (int ib = 0; ib < nx; ib += tile_size) {
+    for (int jb = 0; jb < ny; jb += tile_size) {
       if ((ib + jb) % (tile_size * 2)) {
         const int jlim = (jb + tile_size > ny) ? ny : jb + tile_size;
         const int ilim = (ib + tile_size > nx) ? nx : ib + tile_size;
-        for (int j = jb + 1; j < jlim + 1; ++j) {
-          for (int i = ib + 1; i < ilim + 1; ++i) {
-            image[j + i * height] = 100.0;
+        for (int i = ib + 1; i < ilim + 1; ++i) {
+          for (int j = jb + 1; j < jlim + 1; ++j) {
+            image[i + j * width] = 100.0;
           }
         }
       }
@@ -302,16 +301,16 @@ void output_image(const char* file_name, const int nx, const int ny,
   // This is used to rescale the values
   // to a range of 0-255 for output
   float maximum = 0.0;
-  for (int j = 1; j < ny + 1; ++j) {
-    for (int i = 1; i < nx + 1; ++i) {
-      if (image[j + i * height] > maximum) maximum = image[j + i * height];
+  for (int i = 1; i < nx + 1; ++i) {
+    for (int j = 1; j < ny + 1; ++j) {
+      if (image[i + j * width] > maximum) maximum = image[i + j * width];
     }
   }
 
   // Output image, converting to numbers 0-255
-  for (int j = 1; j < ny + 1; ++j) {
-    for (int i = 1; i < nx + 1; ++i) {
-      fputc((char)(255.0 * image[j + i * height] / maximum), fp);
+  for (int i = 1; i < nx + 1; ++i) {
+    for (int j = 1; j < ny + 1; ++j) {
+      fputc((char)(255.0 * image[i + j * width] / maximum), fp);
     }
   }
 
