@@ -125,10 +125,11 @@ int main(int argc, char* argv[])
     // Call the stencil kernel for iters
     double tic = wtime();
     for (int t = 0; t < niters; ++t) {
+      exchange(comcord, tile, h_halo_size, v_halo_size, coords, dims);
       stencil(tile_width, tile_height, h_halo_size, v_halo_size, tile, tmp_tile);
       exchange(comcord, tmp_tile, h_halo_size, v_halo_size, coords, dims);
       stencil(tile_width, tile_height, h_halo_size, v_halo_size, tmp_tile, tile);
-      exchange(comcord, tile, h_halo_size, v_halo_size, coords, dims);
+      //exchange(comcord, tile, h_halo_size, v_halo_size, coords, dims);
     }
     double toc = wtime();
 
@@ -186,20 +187,20 @@ void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, 
     float *r_buffer = malloc(sizeof(float) * (2*h_halo_size + 2*v_halo_size));
 
     // LEFT
-    for (int i = 1; i < counts[0] - 1; i++) {
-      s_buffer[i + offsets[0]] = tile[i*h_halo_size + 1]; //(1,i)
+    for (int i = 1; i < counts[2] - 1; i++) {
+      s_buffer[i + offsets[2]] = tile[i*h_halo_size + 1]; //(1,i)
     }
     // RIGHT
-    for (int i = 1; i < counts[1] - 1; i++) {
-      s_buffer[i + offsets[1]] = tile[(i+1)*h_halo_size - 2]; //(h_halo_size -2,i)
+    for (int i = 1; i < counts[3] - 1; i++) {
+      s_buffer[i + offsets[3]] = tile[(i+1)*h_halo_size - 2]; //(h_halo_size -2,i)
     }
     // DOWN
-    for (int i = 1; i < counts[3] - 1; i++) {
-      s_buffer[i + offsets[3]] = tile[(v_halo_size - 2)*h_halo_size + i]; //(i,v_halo_size -2)
+    for (int i = 1; i < counts[1] - 1; i++) {
+      s_buffer[i + offsets[1]] = tile[(v_halo_size - 2)*h_halo_size + i]; //(i,v_halo_size -2)
     }
     // UP
-    for (int i = 1; i < counts[2] - 1; i++) {
-      s_buffer[i + offsets[2]] = tile[1*h_halo_size + i]; //(i,1)
+    for (int i = 1; i < counts[0] - 1; i++) {
+      s_buffer[i + offsets[0]] = tile[1*h_halo_size + i]; //(i,1)
     }
     
 
@@ -210,26 +211,26 @@ void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, 
 
     // LEFT
     if (coords[0] != 0 || 1) { //If not at grid left
-      for (int i = 1; i < counts[1] - 1; i++) {
-        tile[i*h_halo_size + 0] = s_buffer[i + offsets[1]]; //(0,i)
+      for (int i = 1; i < counts[3] - 1; i++) {
+        tile[i*h_halo_size + 0] = s_buffer[i + offsets[3]]; //(0,i)
       }
     }
     // RIGHT
     if (coords[0] != dims[0] - 1 ||1) { //If not at grid right
-      for (int i = 1; i < counts[0] - 1; i++) {
-        tile[(i+1)*h_halo_size - 1] = s_buffer[i + offsets[0]]; //(h_halo_size -1,i)
+      for (int i = 1; i < counts[2] - 1; i++) {
+        tile[(i+1)*h_halo_size - 1] = s_buffer[i + offsets[2]]; //(h_halo_size -1,i)
       }
     }
     // DOWN
     if (coords[1] != dims[1] - 1 ||1) { //If not at grid bottom
-      for (int i = 1; i < counts[2] - 1; i++) {
-        tile[(v_halo_size - 1)*h_halo_size + i] = s_buffer[i + offsets[2]]; //(i,v_halo_size -1)
+      for (int i = 1; i < counts[0] - 1; i++) {
+        tile[(v_halo_size - 1)*h_halo_size + i] = s_buffer[i + offsets[0]]; //(i,v_halo_size -1)
       }
     }
     // UP
     if (coords[1] != 0||1) { //If not at grid top
-      for (int i = 1; i < counts[3] - 1; i++) {
-        tile[0*h_halo_size + i] = s_buffer[i + offsets[3]]; //(i,0)
+      for (int i = 1; i < counts[1] - 1; i++) {
+        tile[0*h_halo_size + i] = s_buffer[i + offsets[1]]; //(i,0)
       }
     }
    
