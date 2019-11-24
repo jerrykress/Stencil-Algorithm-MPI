@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
-#include "mpi.h" 
+#include "mpi.h"
+#include <math.h> 
 
 // Define output file name
 #define OUTPUT_FILE "stencil.pgm"
@@ -13,6 +14,7 @@ void init_image(const int nx, const int ny, const int width, const int height,
                 float* image, float* tmp_image);
 void output_image(const char* file_name, const int nx, const int ny,
                   const int width, const int height, float* image);
+void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, int * coords, int * dims);
 double wtime(void);
 
 int main(int argc, char* argv[])
@@ -56,14 +58,11 @@ int main(int argc, char* argv[])
   int height = ny + 2;
 
   // Allocate the image
-  float* image = _mm_malloc(sizeof(float) * width * height, 64);
-  float* tmp_image = _mm_malloc(sizeof(float) * width * height, 64);
+  float* image = malloc(sizeof(float) * width * height);
+  float* tmp_image = malloc(sizeof(float) * width * height);
 
   // Set the input image
   init_image(nx, ny, width, height, image, tmp_image);
-
-  //sync
-  MPI_Barrier(MPI_COMM_WORLD);
 
   
   if(size == 1){
@@ -112,9 +111,9 @@ int main(int argc, char* argv[])
       tile_height = v_halo_size - 2;
     }
     //Setup this tile
-    float* tile = _mm_malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2), 64);
-    float* tmp_tile = _mm_malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2), 64);
-   
+    float* tile = malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2));
+    float* tmp_tile = malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2)); 
+
     //Copy from original image (incl. halo)
     for(int x_offset = 0 ; x_offset < tile_width + 2; x_offset++){
       for(int y_offset = 0; y_offset < tile_height + 2; y_offset++){
@@ -123,20 +122,13 @@ int main(int argc, char* argv[])
       }
     }
 
-    //Calculate neighbor positions (rank)
-    int t_rank = coords[0] * dims[0] + coords[1];
-    int neighbors[4] = {0,0,0,0};
-    neighbors[0] = t_rank - dims[0];
-    neighbors[1] = t_rank - 1;
-    neighbors[2] = t_rank + 1;
-    neighbors[3] = t_rank + dims[0];
     // Call the stencil kernel for iters
     double tic = wtime();
     for (int t = 0; t < niters; ++t) {
+      stencil(tile_width, tile_height, h_halo_size, v_halo_size, tile, tmp_tile);
+      exchange(comcord, tmp_tile, h_halo_size, v_halo_size, coords, dims);
+      stencil(tile_width, tile_height, h_halo_size, v_halo_size, tmp_tile, tile);
       exchange(comcord, tile, h_halo_size, v_halo_size, coords, dims);
-      stencil(nx, ny, width, height, tile, tmp_tile);
-      exchange(comcord, tile, h_halo_size, v_halo_size, coords, dims);
-      stencil(nx, ny, width, height, tmp_tile, tile);
     }
     double toc = wtime();
 
@@ -174,12 +166,12 @@ int main(int argc, char* argv[])
 
     }
 
-    _mm_free(tile);
-    _mm_free(tmp_tile);
+    free(tile);
+    free(tmp_tile);
   }
 
-  _mm_free(image);
-  _mm_free(tmp_image);
+  free(image);
+  free(tmp_image);
 
   MPI_Finalize();
 }
@@ -189,16 +181,9 @@ void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, 
     //Halo order: UP, DOWN, LEFT, RIGHT
     int counts[4] = {v_halo_size, v_halo_size, h_halo_size, h_halo_size};
     int offsets[4] = {0, v_halo_size, 2 * v_halo_size, 2 * v_halo_size + h_halo_size};
-    int vdisp = 0;
-    int hdisp = 0;
 
-    float *s_buffer = _mm_malloc(sizeof(float) * (2*h_halo_size + 2*v_halo_size), 2*h_halo_size + 2*v_halo_size);
-    float *r_buffer = _mm_malloc(sizeof(float) * (2*h_halo_size + 2*v_halo_size), 2*h_halo_size + 2*v_halo_size);
-
-    if (coords[1] == dims[1]-1) vdisp = 0;
-    else vdisp = 1;
-    if (coords[0] == 0) hdisp = 0;
-    else hdisp = 1;
+    float *s_buffer = malloc(sizeof(float) * (2*h_halo_size + 2*v_halo_size));
+    float *r_buffer = malloc(sizeof(float) * (2*h_halo_size + 2*v_halo_size));
 
     // LEFT
     for (int i = 1; i < counts[0] - 1; i++) {
@@ -249,8 +234,8 @@ void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, 
       }
     }
    
-    _mm_free(s_buffer);
-    _mm_free(r_buffer);
+    free(s_buffer);
+    free(r_buffer);
 }
 
 void stencil(const int nx, const int ny, const int width, const int height,
