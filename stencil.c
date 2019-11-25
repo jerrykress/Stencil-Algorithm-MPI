@@ -113,19 +113,23 @@ int main(int argc, char* argv[])
     }
     //Setup this tile
     float* tile = malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2));
-    float* tmp_tile = malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2)); 
+    float* tmp_tile = malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2));
+    printf("Finished tile setup on process: %d\n", rank);
+    printf("Process %d info: %d %d %d %d %d %d %d %d\n", rank, x_start, x_end, y_start, y_end, tile_width, tile_width, h_halo_size, v_halo_size);
 
     //Copy from original image (incl. halo)
     for(int y_offset = 0; y_offset < tile_height + 2; y_offset++){
       for(int x_offset = 0 ; x_offset < tile_width + 2; x_offset++){
-        tile[y_offset * h_halo_size + x_offset]     = image[(y_start + y_offset) * width + (x_start + x_offset)];
-        tmp_tile[y_offset * h_halo_size + x_offset] = image[(y_start + y_offset) * width + (x_start + x_offset)];
+        tile[(y_offset + 1) * h_halo_size + (x_offset + 1)]     = image[(y_start + y_offset) * width + (x_start + x_offset)];
+        tmp_tile[(y_offset + 1) * h_halo_size + (x_offset + 1)] = image[(y_start + y_offset) * width + (x_start + x_offset)];
       }
     }
+    printf("Finished tile copy on process: %d\n", rank);
 
     // Call the stencil kernel for iters
     double tic = wtime();
     for (int t = 0; t < niters; ++t) {
+      printf("Starting stencil on process: %d\n", rank);
       exchange(comcord, tile, h_halo_size, v_halo_size, coords, dims);
       stencil(tile_width, tile_height, h_halo_size, v_halo_size, tile, tmp_tile);
       exchange(comcord, tmp_tile, h_halo_size, v_halo_size, coords, dims);
@@ -134,7 +138,6 @@ int main(int argc, char* argv[])
     }
     double toc = wtime();
 
-    //TODO: Merge to rank 0
     if(rank == MASTER){
       //save rank 0 to original image (excl. halo)
       for (int y_offset = 0; y_offset < tile_height; y_offset++){
