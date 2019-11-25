@@ -58,8 +58,8 @@ int main(int argc, char* argv[])
   int height = ny + 2;
 
   // Allocate the image
-  float* image = malloc(sizeof(float) * width * height);
-  float* tmp_image = malloc(sizeof(float) * width * height);
+  float* image = _mm_malloc(sizeof(float) * width * height, 64);
+  float* tmp_image = _mm_malloc(sizeof(float) * width * height, 64);
 
   // Set the input image
   init_image(nx, ny, width, height, image, tmp_image);
@@ -88,7 +88,7 @@ int main(int argc, char* argv[])
     MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &comcord);
     MPI_Cart_coords(comcord, rank, 2, coords); //Get cartesian co-ordinates of a particular rank:
     MPI_Barrier(MPI_COMM_WORLD);
-    printf("this is tile coord[0]: %d, coord[1]: %d \n", coords[0], coords[1]);
+    printf("this is rank: %d, coord[0]: %d, coord[1]: %d \n", rank, coords[0], coords[1]);
 
     //calculate default tile size (excl. halo)
     int tile_width = ceil((width - 2)/dims[0]); // Default tile size, int col = dims[0];
@@ -112,24 +112,24 @@ int main(int argc, char* argv[])
       tile_height = v_halo_size - 2;
     }
     //Setup this tile
-    float* tile = malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2));
-    float* tmp_tile = malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2));
-    printf("Finished tile setup on process: %d\n", rank);
-    printf("Process %d info: %d %d %d %d %d %d %d %d\n", rank, x_start, x_end, y_start, y_end, tile_width, tile_width, h_halo_size, v_halo_size);
+    float* tile = _mm_malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2), 64);
+    float* tmp_tile = _mm_malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2), 64);
+    //printf("Finished tile setup on process: %d\n", rank);
+    //printf("Process %d info: %d %d %d %d %d %d %d %d\n", rank, x_start, x_end, y_start, y_end, tile_width, tile_width, h_halo_size, v_halo_size);
 
-    //Copy from original image (incl. halo)
-    for(int y_offset = 0; y_offset < tile_height + 2; y_offset++){
-      for(int x_offset = 0 ; x_offset < tile_width + 2; x_offset++){
+    //Copy from original image (excl. halo)
+    for(int y_offset = 0; y_offset < tile_height; y_offset++){
+      for(int x_offset = 0 ; x_offset < tile_width; x_offset++){
         tile[(y_offset + 1) * h_halo_size + (x_offset + 1)]     = image[(y_start + y_offset) * width + (x_start + x_offset)];
         tmp_tile[(y_offset + 1) * h_halo_size + (x_offset + 1)] = image[(y_start + y_offset) * width + (x_start + x_offset)];
       }
     }
-    printf("Finished tile copy on process: %d\n", rank);
+    //printf("Finished tile copy on process: %d\n", rank);
 
     // Call the stencil kernel for iters
     double tic = wtime();
     for (int t = 0; t < niters; ++t) {
-      printf("Starting stencil on process: %d\n", rank);
+      //printf("Starting stencil on process: %d\n", rank);
       exchange(comcord, tile, h_halo_size, v_halo_size, coords, dims);
       stencil(tile_width, tile_height, h_halo_size, v_halo_size, tile, tmp_tile);
       exchange(comcord, tmp_tile, h_halo_size, v_halo_size, coords, dims);
@@ -171,24 +171,23 @@ int main(int argc, char* argv[])
 
     }
 
-    free(tile);
-    free(tmp_tile);
+    _mm_free(tile);
+    _mm_free(tmp_tile);
   }
 
-  free(image);
-  free(tmp_image);
+  _mm_free(image);
+  _mm_free(tmp_image);
 
   MPI_Finalize();
 }
 
 void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, int * coords, int * dims){
-    //float * tile, int rows, int cols
     //Halo order: UP, DOWN, LEFT, RIGHT
     int counts[4] = {v_halo_size, v_halo_size, h_halo_size, h_halo_size};
     int offsets[4] = {0, v_halo_size, 2 * v_halo_size, 2 * v_halo_size + h_halo_size};
 
-    float *s_buffer = malloc(sizeof(float) * (2*h_halo_size + 2*v_halo_size));
-    float *r_buffer = malloc(sizeof(float) * (2*h_halo_size + 2*v_halo_size));
+    float *s_buffer = _mm_malloc(sizeof(float) * (2*h_halo_size + 2*v_halo_size), 2*h_halo_size + 2*v_halo_size);
+    float *r_buffer = _mm_malloc(sizeof(float) * (2*h_halo_size + 2*v_halo_size), 2*h_halo_size + 2*v_halo_size);
 
     // LEFT
     for (int i = 0; i < counts[0] - 1; i++) {
@@ -238,8 +237,8 @@ void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, 
       }
     }
    
-    free(s_buffer);
-    free(r_buffer);
+    _mm_free(s_buffer);
+    _mm_free(r_buffer);
 }
 
 void stencil(const int nx, const int ny, const int width, const int height,
@@ -248,7 +247,8 @@ void stencil(const int nx, const int ny, const int width, const int height,
   int delta = width - nx;
   int pos = 1 + width;
   for(int i = 1; i < nx + 1; i++){
-    #pragma vector
+    __assume_aligned(image, 64);
+    __assume_aligned(tmp_image, 64);
     for(int j = 1; j < ny + 1; j++){
           tmp_image[pos] = image[pos] * 0.6f + (image[pos - 1] + image[pos + 1] + image[pos - width] + image[pos + width]) * 0.1f;
           pos += 1;
