@@ -197,13 +197,13 @@ void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, 
     for (int i = 0; i < counts[1] - 1; i++) {
       s_buffer[i + offsets[1]] = tile[(i+1)*h_halo_size - 2]; //(h_halo_size -2,i)
     }
-    // DOWN
-    for (int i = 0; i < counts[3] - 1; i++) {
-      s_buffer[i + offsets[3]] = tile[(v_halo_size - 2)*h_halo_size + i]; //(i,v_halo_size -2)
-    }
     // UP
     for (int i = 0; i < counts[2] - 1; i++) {
       s_buffer[i + offsets[2]] = tile[1*h_halo_size + i]; //(i,1)
+    }
+    // DOWN
+    for (int i = 0; i < counts[3] - 1; i++) {
+      s_buffer[i + offsets[3]] = tile[(v_halo_size - 2)*h_halo_size + i]; //(i,v_halo_size -2)
     }
     
 
@@ -213,28 +213,20 @@ void exchange(MPI_Comm comcord, float * tile, int h_halo_size, int v_halo_size, 
     MPI_Neighbor_alltoallv(s_buffer, counts, offsets, MPI_FLOAT, r_buffer, counts, offsets, MPI_FLOAT, comcord);
 
     // LEFT
-    if (coords[0] != 0 || 1) { //If not at grid left
-      for (int i = 0; i < counts[0] - 1; i++) {
-        tile[i*h_halo_size + 0] = r_buffer[i + offsets[0]]; //(0,i)
-      }
+    for (int i = 0; i < counts[0] - 1; i++) {
+      tile[i*h_halo_size + 0] = r_buffer[i + offsets[0]]; //(0,i)
     }
     // RIGHT
-    if (coords[0] != dims[0] - 1 ||1) { //If not at grid right
-      for (int i = 0; i < counts[1] - 1; i++) {
-        tile[(i+1)*h_halo_size - 1] = r_buffer[i + offsets[1]]; //(h_halo_size -1,i)
-      }
-    }
-    // DOWN
-    if (coords[1] != dims[1] - 1 ||1) { //If not at grid bottom
-      for (int i = 0; i < counts[3] - 1; i++) {
-        tile[(v_halo_size - 1)*h_halo_size + i] = r_buffer[i + offsets[3]]; //(i,v_halo_size -1)
-      }
+    for (int i = 0; i < counts[1] - 1; i++) {
+      tile[(i+1)*h_halo_size - 1] = r_buffer[i + offsets[1]]; //(h_halo_size -1,i)
     }
     // UP
-    if (coords[1] != 0||1) { //If not at grid top
-      for (int i = 0; i < counts[2] - 1; i++) {
-        tile[0*h_halo_size + i] = r_buffer[i + offsets[2]]; //(i,0)
-      }
+    for (int i = 0; i < counts[2] - 1; i++) {
+      tile[0*h_halo_size + i] = r_buffer[i + offsets[2]]; //(i,0)
+    }
+    // DOWN
+    for (int i = 0; i < counts[3] - 1; i++) {
+      tile[(v_halo_size - 1)*h_halo_size + i] = r_buffer[i + offsets[3]]; //(i,v_halo_size -1)
     }
    
     _mm_free(s_buffer);
