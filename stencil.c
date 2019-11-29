@@ -113,8 +113,8 @@ int main(int argc, char* argv[])
       v_halo_size = tile_height + 2;
     }
     //Setup this tile
-    float* tile = _mm_malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2), 64);
-    float* tmp_tile = _mm_malloc(sizeof(float) * (tile_width + 2) * (tile_height + 2), 64);
+    float* tile = _mm_malloc(sizeof(float) * h_halo_size * v_halo_size, 64);
+    float* tmp_tile = _mm_malloc(sizeof(float) * h_halo_size * v_halo_size, 64);
     //printf("Finished tile setup on process: %d\n", rank);
     printf("Process %d info: %d %d %d %d %d %d %d %d\n", rank, x_start, x_end, y_start, y_end, tile_width, tile_width, h_halo_size, v_halo_size);
 
