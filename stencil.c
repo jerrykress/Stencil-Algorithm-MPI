@@ -240,10 +240,10 @@ void stencil(const int nx, const int ny, const int width, const int height,
 {
   int delta = width - nx;
   int pos = 1 + width;
-  for(int i = 1; i < nx + 1; i++){
+  for(int iy = 0; iy < ny; iy++){
     __assume_aligned(image, 64);
     __assume_aligned(tmp_image, 64);
-    for(int j = 1; j < ny + 1; j++){
+    for(int ix = 0; ix < nx; ix++){
           tmp_image[pos] = image[pos] * 0.6f + (image[pos - 1] + image[pos + 1] + image[pos - width] + image[pos + width]) * 0.1f;
           pos += 1;
     }
