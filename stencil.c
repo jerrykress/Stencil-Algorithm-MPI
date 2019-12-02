@@ -33,9 +33,11 @@ int main(int argc, char* argv[])
   int dims[2] = {0,0};   //Leave 0 as default for MPI automatic config
   int periods[2] = {0,0};
   int coords[2] = {0,0};
-  int reorder = 0;       //TODO:find out if allow reorder makes it run faster
+  int reorder = 0;      
   MPI_Comm comcord;
-  MPI_Status status;     /* struct used by MPI_Recv */
+  MPI_Status status;     
+  MPI_Request request;
+  int request_complete = 0;
   char message[BUFSIZ];
 
   /* MPI_Init returns once it has started up processes */
@@ -150,10 +152,12 @@ int main(int argc, char* argv[])
       //save other tiles
       for (int receive_rank = 1; receive_rank < size; receive_rank ++){
         int tile_meta_i[4] = {0, 0, 0, 0}; //x_start, y_start, x_end, y_end
-        MPI_Recv(&tile_meta_i[0], BUFSIZ, MPI_INT, receive_rank, tag, MPI_COMM_WORLD, &status);
+        MPI_Irecv(&tile_meta_i[0], 4, MPI_INT, receive_rank, tag, MPI_COMM_WORLD, &request);
+        MPI_Wait(&request, &status);
         printf("Merging to master from rank: %d, xs: %d, ys: %d, xe: %d, ye: %d\n", receive_rank, tile_meta_i[0], tile_meta_i[1],tile_meta_i[2], tile_meta_i[3]);
         for(int i = tile_meta_i[1]; i < tile_meta_i[3] + 1; i++){
-          MPI_Recv(&image[i * width + tile_meta_i[0]], BUFSIZ, MPI_FLOAT, receive_rank, tag, MPI_COMM_WORLD, &status);
+          MPI_Irecv(&image[i * width + tile_meta_i[0]], BUFSIZ, MPI_FLOAT, receive_rank, tag, MPI_COMM_WORLD, &request);
+          MPI_Wait(&request, &status);
         }
       }
 
@@ -166,9 +170,11 @@ int main(int argc, char* argv[])
     } else {
       //send to rank 0
       int tile_meta_o[4] = {x_start, y_start, x_end, y_end};
-      MPI_Send(&tile_meta_o[0], 4, MPI_INT, 0, tag, MPI_COMM_WORLD);
+      MPI_Isend(&tile_meta_o[0], 4, MPI_INT, 0, tag, MPI_COMM_WORLD, &request);
+      MPI_Wait(&request, &status);
       for(int i = 1; i < v_halo_size - 1; i++){
-        MPI_Send(&tile[i*h_halo_size + 1], tile_width, MPI_FLOAT, 0, tag, MPI_COMM_WORLD);
+        MPI_Isend(&tile[i * h_halo_size + 1], tile_width, MPI_FLOAT, 0, tag, MPI_COMM_WORLD, &request);
+        MPI_Wait(&request, &status);
       }
 
     }
