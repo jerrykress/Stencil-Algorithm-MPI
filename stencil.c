@@ -36,8 +36,8 @@ int main(int argc, char *argv[])
   int coords[2] = {0, 0};
   int reorder = 0; //TODO:find out if allow reorder makes it run faster
   MPI_Comm comcord;
-  MPI_Status status; /* struct used by MPI_Recv */
   MPI_Request request;
+  MPI_Status status; /* struct used by MPI_Recv */
   char message[BUFSIZ];
 
   /* MPI_Init returns once it has started up processes */
@@ -92,8 +92,8 @@ int main(int argc, char *argv[])
     MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &comcord);
     MPI_Cart_coords(comcord, rank, 2, coords); //Get cartesian co-ordinates of a particular rank:
     MPI_Barrier(MPI_COMM_WORLD);
-    // printf("DIMS:%d %d", dims[0], dims[1]);
-    // printf("this is rank: %d, coord[0]: %d, coord[1]: %d \n", rank, coords[0], coords[1]);
+    printf("DIMS:%d %d", dims[0], dims[1]);
+    printf("this is rank: %d, coord[0]: %d, coord[1]: %d \n", rank, coords[0], coords[1]);
 
     //calculate default tile size (excl. halo)
     int tile_width = ceil((width - 2) / dims[0]);   // Default tile size, int col = dims[0];
@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
     float *tile = _mm_malloc(sizeof(float) * h_halo_size * v_halo_size, 64);
     float *tmp_tile = _mm_malloc(sizeof(float) * h_halo_size * v_halo_size, 64);
     //printf("Finished tile setup on process: %d\n", rank);
-    // printf("Process %d info: %d %d %d %d %d %d %d %d\n", rank, x_start, x_end, y_start, y_end, tile_width, tile_width, h_halo_size, v_halo_size);
+    printf("Process %d info: %d %d %d %d %d %d %d %d\n", rank, x_start, x_end, y_start, y_end, tile_width, tile_width, h_halo_size, v_halo_size);
 
     //Copy from original image (excl. halo)
     for (int y_offset = 0; y_offset < tile_height; y_offset++)
@@ -144,9 +144,9 @@ int main(int argc, char *argv[])
       stencil(tile_width, tile_height, h_halo_size, v_halo_size, tile, tmp_tile);
       exchange(comcord, tmp_tile, h_halo_size, v_halo_size, coords, dims, &request);
       stencil(tile_width, tile_height, h_halo_size, v_halo_size, tmp_tile, tile);
+      //exchange(comcord, tile, h_halo_size, v_halo_size, coords, dims);
     }
     double toc = wtime();
-    printf(" runtime: %lf s\n", toc - tic);
     MPI_Barrier(MPI_COMM_WORLD);
 
     if (rank == MASTER)
@@ -181,7 +181,6 @@ int main(int argc, char *argv[])
     else
     {
       //send to rank 0
-      printf("Sending from rank: %d\n", rank);
       int tile_meta_o[4] = {x_start, y_start, x_end, y_end};
       MPI_Send(&tile_meta_o[0], 4, MPI_INT, 0, tag, MPI_COMM_WORLD);
       for (int i = 1; i < v_halo_size - 1; i++)
@@ -204,7 +203,7 @@ void exchange(MPI_Comm comcord, float *tile, int h_halo_size, int v_halo_size, i
 {
   //Halo order: UP, DOWN, LEFT, RIGHT
   int counts[4] = {v_halo_size, v_halo_size, h_halo_size, h_halo_size};
-  int offsets[4] = {0, v_halo_size, 2 * v_halo_size, 2 * v_halo_size + h_halo_size};
+  int offsets[4] = {0, v_halo_size, 2 * v_halo_size, 2 * v_halo_size + h_halo_size}; 
 
   float *s_buffer = _mm_malloc(sizeof(float) * (2 * h_halo_size + 2 * v_halo_size), 2 * h_halo_size + 2 * v_halo_size);
   float *r_buffer = _mm_malloc(sizeof(float) * (2 * h_halo_size + 2 * v_halo_size), 2 * h_halo_size + 2 * v_halo_size);
@@ -229,7 +228,7 @@ void exchange(MPI_Comm comcord, float *tile, int h_halo_size, int v_halo_size, i
   {
     s_buffer[i + offsets[3]] = tile[(v_halo_size - 2) * h_halo_size + i]; //(i,v_halo_size -2)
   }
-
+  MPI_Barrier(MPI_COMM_WORLD);
   /*MPI_Neighbor_alltoallv(const void *sendbuf, const int sendcounts[], const int sdispls[], 
                             MPI_Datatype sendtype, void *recvbuf, const int recvcounts[], 
                             const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm)*/
