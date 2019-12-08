@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
   int dims[2] = {0, 0}; //Leave 0 as default for MPI automatic config
   int periods[2] = {0, 0};
   int coords[2] = {0, 0};
-  int reorder = 0; //TODO:find out if allow reorder makes it run faster
+  int reorder = 0;
   MPI_Comm comcord;
   MPI_Request request;
   MPI_Status status; /* struct used by MPI_Recv */
@@ -86,14 +86,28 @@ int main(int argc, char *argv[])
   }
   else
   {
+    double sq = sqrt(size);
+    int prelim_dim_0 = 0;
+    int prelim_dim_1 = 0;
+
+    for (int i = 1; i <= size; i++){
+      if (size % i == 0){
+        if (i > prelim_dim_0 && i <= (int)floor(sq)){
+          prelim_dim_0 = i;
+        }
+      }
+    }
+
+    prelim_dim_1 = size / prelim_dim_0;
+    dims[0] = prelim_dim_0;
 
     //run on multiple processes, set up a grid
     MPI_Dims_create(size, 2, dims);
     MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &comcord);
     MPI_Cart_coords(comcord, rank, 2, coords); //Get cartesian co-ordinates of a particular rank:
     MPI_Barrier(MPI_COMM_WORLD);
-    printf("DIMS:%d %d", dims[0], dims[1]);
-    printf("this is rank: %d, coord[0]: %d, coord[1]: %d \n", rank, coords[0], coords[1]);
+    printf("DIMS:%d %d\n", dims[0], dims[1]);
+    printf("Rank: %d, coord[0]: %d, coord[1]: %d \n", rank, coords[0], coords[1]);
 
     //calculate default tile size (excl. halo)
     int tile_width = ceil((width - 2) / dims[0]);   // Default tile size, int col = dims[0];
@@ -106,14 +120,12 @@ int main(int argc, char *argv[])
     //Halo information, encodes actual tile size
     int h_halo_size = tile_width + 2;  //For complete tile
     int v_halo_size = tile_height + 2; //For complete tile
-    if (coords[0] == dims[0] - 1)
-    {
+    if (coords[0] == dims[0] - 1){
       x_end = nx;
       tile_width = x_end - x_start + 1;
       h_halo_size = tile_width + 2;
     }
-    if (coords[1] == dims[1] - 1)
-    {
+    if (coords[1] == dims[1] - 1){
       y_end = ny;
       tile_height = y_end - y_start + 1;
       v_halo_size = tile_height + 2;
@@ -122,13 +134,11 @@ int main(int argc, char *argv[])
     float *tile = _mm_malloc(sizeof(float) * h_halo_size * v_halo_size, 64);
     float *tmp_tile = _mm_malloc(sizeof(float) * h_halo_size * v_halo_size, 64);
     //printf("Finished tile setup on process: %d\n", rank);
-    printf("Process %d info: %d %d %d %d %d %d %d %d\n", rank, x_start, x_end, y_start, y_end, tile_width, tile_width, h_halo_size, v_halo_size);
+    // printf("Process %d info: %d %d %d %d %d %d %d %d\n", rank, x_start, x_end, y_start, y_end, tile_width, tile_width, h_halo_size, v_halo_size);
 
     //Copy from original image (excl. halo)
-    for (int y_offset = 0; y_offset < tile_height; y_offset++)
-    {
-      for (int x_offset = 0; x_offset < tile_width; x_offset++)
-      {
+    for (int y_offset = 0; y_offset < tile_height; y_offset++){
+      for (int x_offset = 0; x_offset < tile_width; x_offset++){
         tile[(y_offset + 1) * h_halo_size + (x_offset + 1)] = image[(y_start + y_offset) * width + (x_start + x_offset)];
         tmp_tile[(y_offset + 1) * h_halo_size + (x_offset + 1)] = image[(y_start + y_offset) * width + (x_start + x_offset)];
       }
@@ -137,8 +147,7 @@ int main(int argc, char *argv[])
 
     // Call the stencil kernel for iters
     double tic = wtime();
-    for (int t = 0; t < niters; ++t)
-    {
+    for (int t = 0; t < niters; ++t){
       //printf("Starting stencil on process: %d\n", rank);
       exchange(comcord, tile, h_halo_size, v_halo_size, coords, dims, &request);
       stencil(tile_width, tile_height, h_halo_size, v_halo_size, tile, tmp_tile);
@@ -165,7 +174,7 @@ int main(int argc, char *argv[])
       {
         int tile_meta_i[4] = {0, 0, 0, 0}; //x_start, y_start, x_end, y_end
         MPI_Recv(&tile_meta_i[0], BUFSIZ, MPI_INT, receive_rank, tag, MPI_COMM_WORLD, &status);
-        printf("Merging to master from rank: %d, xs: %d, ys: %d, xe: %d, ye: %d\n", receive_rank, tile_meta_i[0], tile_meta_i[1], tile_meta_i[2], tile_meta_i[3]);
+        printf("Merging from rank: %d, xs: %d, ys: %d, xe: %d, ye: %d\n", receive_rank, tile_meta_i[0], tile_meta_i[1], tile_meta_i[2], tile_meta_i[3]);
         for (int i = tile_meta_i[1]; i < tile_meta_i[3] + 1; i++)
         {
           MPI_Recv(&image[i * width + tile_meta_i[0]], BUFSIZ, MPI_FLOAT, receive_rank, tag, MPI_COMM_WORLD, &status);
