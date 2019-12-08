@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include "mpi.h"
+#include "omp.h"
 #include <math.h>
 
 // Define output file name
@@ -20,25 +21,6 @@ int main(int argc, char *argv[]){
     exit(EXIT_FAILURE);
   }
 
-  int rank;
-  int size;
-  int dest;             /* destination rank for message */
-  int source;           /* source rank of a message */
-  int tag = 0;          /* scope for adding extra information to a message */
-  int dims[2] = {0, 0}; //Leave 0 as default for MPI automatic config
-  int periods[2] = {0, 0};
-  int coords[2] = {0, 0};
-  int reorder = 0;
-  MPI_Comm comcord;
-  MPI_Request request;
-  MPI_Status status; /* struct used by MPI_Recv */
-  char message[BUFSIZ];
-
-  /* MPI_Init returns once it has started up processes */
-  MPI_Init(&argc, &argv);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
   // Initiliase problem dimensions from command line arguments
   int nx = atoi(argv[1]);
   int ny = atoi(argv[2]);
@@ -51,127 +33,110 @@ int main(int argc, char *argv[]){
   float *tmp_image = _mm_malloc(sizeof(float) * width * height, 64);
   init_image(nx, ny, width, height, image, tmp_image);
 
-  if (size == 1){
-    // Call the stencil kernel
-    double tic = wtime();
-    for (int t = 0; t < niters; ++t){
-      stencil(nx, ny, width, height, image, tmp_image);
-      stencil(nx, ny, width, height, tmp_image, image);
-    }
-    double toc = wtime();
-
-    // Output
-    printf("------------------------------------\n");
-    printf(" runtime: %lf s\n", toc - tic);
-    printf("------------------------------------\n");
-
-    output_image(OUTPUT_FILE, nx, ny, width, height, image);
-  }
-  else
+  #pragma omp parallel shared(nthreads) private(tid, tile, tmp_tile)
   {
-    //make sure the grid is taller than wider
-    double sq = sqrt(size);
-    int prelim_dim_0 = 0;
-    int prelim_dim_1 = 0;
+    int nthreads = omp_get_num_threads();
+    int tid = omp_get_thread_num();
+    clock_t tic, toc;
+    float elapsed_time;
+    double maxr;
 
-    for (int i = 1; i <= size; i++){
-      if (size % i == 0){
-        if (i > prelim_dim_0 && i <= (int)floor(sq)){
-          prelim_dim_0 = i;
-        }
+    #pragma omp master
+    if (nthreads == 1){
+      // Call the stencil kernel
+      double tic = clock();
+      for (int t = 0; t < niters; ++t){
+        stencil(nx, ny, width, height, image, tmp_image);
+        stencil(nx, ny, width, height, tmp_image, image);
       }
-    }
-    prelim_dim_1 = size / prelim_dim_0;
-    dims[0] = prelim_dim_0;
+      double toc = clock();
 
-    //set up a grid
-    MPI_Dims_create(size, 2, dims);
-    MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &comcord);
-    MPI_Cart_coords(comcord, rank, 2, coords); //Get cartesian co-ordinates of a particular rank:
-    MPI_Barrier(MPI_COMM_WORLD);
-    printf("DIMS:%d %d\n", dims[0], dims[1]);
-    printf("Rank: %d, coord[0]: %d, coord[1]: %d \n", rank, coords[0], coords[1]);
+      elapsed_time = (float)(toc - tic) / (float)CLOCKS_PER_SEC;
+      elapsed_time /= (float)nthreads;
 
-    //calculate default tile size (excl. halo)
-    int tile_width = ceil((width - 2) / dims[0]);   // Default tile size, int col = dims[0];
-    int tile_height = ceil((height - 2) / dims[1]); // Default tile size, int row = dims[1];
-    //Tile receive bounds (excl. halo)
-    int y_start = 1 + tile_height * (coords[1]);
-    int y_end = 0 + tile_height * (coords[1] + 1);
-    int x_start = 1 + tile_width * (coords[0]);
-    int x_end = 0 + tile_width * (coords[0] + 1);
-    //Halo information, encodes actual tile size
-    int h_halo_size = tile_width + 2;  //For complete tile
-    int v_halo_size = tile_height + 2; //For complete tile
-    if (coords[0] == dims[0] - 1){
-      x_end = nx;
-      tile_width = x_end - x_start + 1;
-      h_halo_size = tile_width + 2;
-    }
-    if (coords[1] == dims[1] - 1){
-      y_end = ny;
-      tile_height = y_end - y_start + 1;
-      v_halo_size = tile_height + 2;
-    }
-    //Setup this tile
-    float *tile = _mm_malloc(sizeof(float) * h_halo_size * v_halo_size, 64);
-    float *tmp_tile = _mm_malloc(sizeof(float) * h_halo_size * v_halo_size, 64);
-
-    //Copy from original image (excl. halo)
-    for (int y_offset = 0; y_offset < tile_height; y_offset++){
-      for (int x_offset = 0; x_offset < tile_width; x_offset++){
-        tile[(y_offset + 1) * h_halo_size + (x_offset + 1)] = image[(y_start + y_offset) * width + (x_start + x_offset)];
-        tmp_tile[(y_offset + 1) * h_halo_size + (x_offset + 1)] = image[(y_start + y_offset) * width + (x_start + x_offset)];
-      }
-    }
-
-    // Call the stencil kernel for iters
-    double tic = wtime();
-    for (int t = 0; t < niters; ++t){
-      exchange(comcord, tile, h_halo_size, v_halo_size, coords, dims, &request);
-      stencil(tile_width, tile_height, h_halo_size, v_halo_size, tile, tmp_tile);
-      exchange(comcord, tmp_tile, h_halo_size, v_halo_size, coords, dims, &request);
-      stencil(tile_width, tile_height, h_halo_size, v_halo_size, tmp_tile, tile);
-    }
-    double toc = wtime();
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    if (rank == MASTER){
-      //save rank 0 to original image (excl. halo)
-      for (int y_offset = 0; y_offset < tile_height; y_offset++){
-        for (int x_offset = 0; x_offset < tile_width; x_offset++){
-          image[(y_start + y_offset) * width + (x_start + x_offset)] = tile[(y_offset + 1) * h_halo_size + (x_offset + 1)];
-        }
-      }
-
-      //save other tiles
-      for (int receive_rank = 1; receive_rank < size; receive_rank++){
-        int tile_meta_i[4] = {0, 0, 0, 0}; //x_start, y_start, x_end, y_end
-        MPI_Recv(&tile_meta_i[0], BUFSIZ, MPI_INT, receive_rank, tag, MPI_COMM_WORLD, &status);
-        printf("Merging from rank: %d, xs: %d, ys: %d, xe: %d, ye: %d\n", receive_rank, tile_meta_i[0], tile_meta_i[1], tile_meta_i[2], tile_meta_i[3]);
-        for (int i = tile_meta_i[1]; i < tile_meta_i[3] + 1; i++){
-          MPI_Recv(&image[i * width + tile_meta_i[0]], BUFSIZ, MPI_FLOAT, receive_rank, tag, MPI_COMM_WORLD, &status);
-        }
-      }
-
+      // Output
       printf("------------------------------------\n");
-      printf(" runtime: %lf s\n", toc - tic);
+      printf(" runtime: %f s\n", elapsed_time);
       printf("------------------------------------\n");
 
       output_image(OUTPUT_FILE, nx, ny, width, height, image);
     }
     else
-    {
-      //send to rank 0
-      int tile_meta_o[4] = {x_start, y_start, x_end, y_end};
-      MPI_Send(&tile_meta_o[0], 4, MPI_INT, 0, tag, MPI_COMM_WORLD);
-      for (int i = 1; i < v_halo_size - 1; i++){
-        MPI_Send(&tile[i * h_halo_size + 1], tile_width, MPI_FLOAT, 0, tag, MPI_COMM_WORLD);
-      }
-    }
 
-    _mm_free(tile);
-    _mm_free(tmp_tile);
+    {
+      //calculate default tile size (excl. halo)
+      int tile_width = nx; 
+      int tile_height = ceil((height - 2) / nthreads); 
+      //Tile receive bounds (excl. halo)
+      int y_start = 1 + tile_height * (tid);
+      int y_end = 0 + tile_height * (tid + 1);
+      int x_start = 1;
+      int x_end = nx;
+      //Halo information, encodes actual tile size
+      int h_halo_size = tile_width + 2; 
+      int v_halo_size = tile_height + 2; 
+      if (tid == nthreads - 1){
+        y_end = ny;
+        tile_height = y_end - y_start + 1;
+        v_halo_size = tile_height + 2;
+      }
+      //Setup this tile
+      float *tile = _mm_malloc(sizeof(float) * h_halo_size * v_halo_size, 64);
+      float *tmp_tile = _mm_malloc(sizeof(float) * h_halo_size * v_halo_size, 64);
+
+      //Copy from original image (excl. halo)
+      for (int y_offset = 0; y_offset < tile_height; y_offset++){
+        for (int x_offset = 0; x_offset < tile_width; x_offset++){
+          tile[(y_offset + 1) * h_halo_size + (x_offset + 1)] = image[(y_start + y_offset) * width + (x_start + x_offset)];
+          tmp_tile[(y_offset + 1) * h_halo_size + (x_offset + 1)] = image[(y_start + y_offset) * width + (x_start + x_offset)];
+        }
+      }
+
+      // Call the stencil kernel for iters
+      for (int t = 0; t < niters; ++t){
+        stencil(tile_width, tile_height, h_halo_size, v_halo_size, tile, tmp_tile);
+        stencil(tile_width, tile_height, h_halo_size, v_halo_size, tmp_tile, tile);
+      }
+      double toc = wtime();
+
+      if (rank == MASTER){
+        //save rank 0 to original image (excl. halo)
+        for (int y_offset = 0; y_offset < tile_height; y_offset++){
+          for (int x_offset = 0; x_offset < tile_width; x_offset++){
+            image[(y_start + y_offset) * width + (x_start + x_offset)] = tile[(y_offset + 1) * h_halo_size + (x_offset + 1)];
+          }
+        }
+
+        //save other tiles
+        for (int receive_rank = 1; receive_rank < size; receive_rank++){
+          int tile_meta_i[4] = {0, 0, 0, 0}; //x_start, y_start, x_end, y_end
+          MPI_Recv(&tile_meta_i[0], BUFSIZ, MPI_INT, receive_rank, tag, MPI_COMM_WORLD, &status);
+          printf("Merging from rank: %d, xs: %d, ys: %d, xe: %d, ye: %d\n", receive_rank, tile_meta_i[0], tile_meta_i[1], tile_meta_i[2], tile_meta_i[3]);
+          for (int i = tile_meta_i[1]; i < tile_meta_i[3] + 1; i++){
+            MPI_Recv(&image[i * width + tile_meta_i[0]], BUFSIZ, MPI_FLOAT, receive_rank, tag, MPI_COMM_WORLD, &status);
+          }
+        }
+
+        printf("------------------------------------\n");
+        printf(" runtime: %lf s\n", toc - tic);
+        printf("------------------------------------\n");
+
+        output_image(OUTPUT_FILE, nx, ny, width, height, image);
+      }
+      else
+      {
+        //send to rank 0
+        int tile_meta_o[4] = {x_start, y_start, x_end, y_end};
+        MPI_Send(&tile_meta_o[0], 4, MPI_INT, 0, tag, MPI_COMM_WORLD);
+        for (int i = 1; i < v_halo_size - 1; i++){
+          MPI_Send(&tile[i * h_halo_size + 1], tile_width, MPI_FLOAT, 0, tag, MPI_COMM_WORLD);
+        }
+      }
+
+      _mm_free(tile);
+      _mm_free(tmp_tile);
+    }
+  
   }
 
   _mm_free(image);
