@@ -29,11 +29,12 @@ int main(int argc, char *argv[]){
   int dim_1 = 0; 
 
   // Allocate the image
-  float *image = _mm_malloc(sizeof(float) * width * height, 64);
-  float *tmp_image = _mm_malloc(sizeof(float) * width * height, 64);
+  float *image = malloc(sizeof(float) * width * height);
+  float *tmp_image = malloc(sizeof(float) * width * height);
   init_image(nx, ny, width, height, image, tmp_image);
 
-  int nthreads = omp_get_num_threads();
+  omp_set_num_threads(4);
+  int nthreads = 4;
   double sq = sqrt(nthreads);
   int prelim_dim_0 = 0;
   int prelim_dim_1 = 0;
@@ -49,10 +50,14 @@ int main(int argc, char *argv[]){
   dim_0 = prelim_dim_0;
   dim_1 = prelim_dim_1;
 
+  printf("NT: %d %d %d\n", nthreads, dim_0, dim_1);
+
   double tic = wtime();
   for (int t = 0; t < niters; ++t){
     stencil(nx, ny, width, height, image, tmp_image, dim_0, dim_1);
+        #pragma omp barrier
     stencil(nx, ny, width, height, tmp_image, image, dim_0, dim_1);
+        #pragma omp barrier
   }
   double toc = wtime();
 
@@ -67,46 +72,36 @@ int main(int argc, char *argv[]){
 
 void stencil(const int nx, const int ny, const int width, const int height, float *image, float *tmp_image, int dim_0, int dim_1){
 
-#pragma omp parallel shared(dim_0,dim_1,image,tmp_image,nx,ny,width,height) private(tid,coord_0,coord_1,tile_width,tile_height,y_start,y_end,x_start,x_end,h_halo_size,v_halo_size,pos)
-{
-  int tid = omp_get_thread_num();
-  int coord_0 = (int)floor(tid / dim_0);
-  int coord_1 = (int)(tid % dim_0);
-
-     //calculate default tile nthreads (excl. halo)
-    int tile_width = ceil((width - 2) / dim_0);   // Default tile nthreads, int col = dim_0;
-    int tile_height = ceil((height - 2) / dim_1); // Default tile nthreads, int row = nthreads;
-    //Tile receive bounds (excl. halo)
-    int y_start = 1 + tile_height * (coord_1);
-    int y_end = 0 + tile_height * (coord_1 + 1);
-    int x_start = 1 + tile_width * (coord_0);
-    int x_end = 0 + tile_width * (coord_0 + 1);
-    //Halo information, encodes actual tile nthreads
-    int h_halo_size = tile_width + 2;  //For complete tile
-    int v_halo_size = tile_height + 2; //For complete tile
-    if (coord_0 == dim_0 - 1){
-      x_end = nx;
-      tile_width = x_end - x_start + 1;
-      h_halo_size = tile_width + 2;
-    }
-    if (coord_1 == dim_1 - 1){
-      y_end = ny;
-      tile_height = y_end - y_start + 1;
-      v_halo_size = tile_height + 2;
-    }
-
-    int pos = y_start * width + x_start;
+  int tid,coord_0,coord_1,y_start,y_end,x_start,x_end,pos,iy,ix;
+  //calculate default tile nthreads (excl. halo)
+  int tile_width = ceil((width - 2) / dim_0);   // Default tile nthreads, int col = dim_0;
+  int tile_height = ceil((height - 2) / dim_1); // Default tile nthreads, int row = nthreads;
+#pragma omp parallel shared(dim_0,dim_1,image,tmp_image,nx,ny,width,height) private(tid,coord_0,coord_1,y_start,y_end,x_start,x_end,pos,iy,ix)
+  {
+  tid = omp_get_thread_num();
+  coord_0 = (int)floor(tid / dim_0);
+  coord_1 = (int)(tid % dim_0);
+  //Tile receive bounds (excl. halo)
+  y_start = 1 + tile_height * (coord_1);
+  y_end = 0 + tile_height * (coord_1 + 1);
+  x_start = 1 + tile_width * (coord_0);
+  x_end = 0 + tile_width * (coord_0 + 1);
+  if (coord_0 == dim_0 - 1){
+    x_end = nx;
+  }
+  if (coord_1 == dim_1 - 1){
+    y_end = ny;
+  }
     
-#pragma omp parallel for collapse(2)
-    for (int iy = y_start; iy <= y_end; iy++){
-      for (int ix = x_start; ix <= x_start; ix++){
+    #pragma omp parallel for collapse(2)
+    for (iy = y_start; iy <= y_end; iy++){
+      for (ix = x_start; ix <= x_end; ix++){
+        pos = iy * width + ix;
         tmp_image[pos] = image[pos] * 0.6f + (image[pos - 1] + image[pos + 1] + image[pos - width] + image[pos + width]) * 0.1f;
-        pos += 1;
       }
-      pos += 2;
     }
 
-}
+  }
 }
 
 // Create the input image
