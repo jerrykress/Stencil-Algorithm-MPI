@@ -89,8 +89,6 @@ int main(int argc, char *argv[]){
     MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &comcord);
     MPI_Cart_coords(comcord, rank, 2, coords); //Get cartesian co-ordinates of a particular rank:
     MPI_Barrier(MPI_COMM_WORLD);
-    printf("DIMS:%d %d\n", dims[0], dims[1]);
-    printf("Rank: %d, coord[0]: %d, coord[1]: %d \n", rank, coords[0], coords[1]);
 
     //calculate default tile size (excl. halo)
     int tile_width = ceil((width - 2) / dims[0]);   // Default tile size, int col = dims[0];
@@ -148,7 +146,6 @@ int main(int argc, char *argv[]){
       for (int receive_rank = 1; receive_rank < size; receive_rank++){
         int tile_meta_i[4] = {0, 0, 0, 0}; //x_start, y_start, x_end, y_end
         MPI_Recv(&tile_meta_i[0], BUFSIZ, MPI_INT, receive_rank, tag, MPI_COMM_WORLD, &status);
-        printf("Merging from rank: %d, xs: %d, ys: %d, xe: %d, ye: %d\n", receive_rank, tile_meta_i[0], tile_meta_i[1], tile_meta_i[2], tile_meta_i[3]);
         for (int i = tile_meta_i[1]; i < tile_meta_i[3] + 1; i++){
           MPI_Recv(&image[i * width + tile_meta_i[0]], BUFSIZ, MPI_FLOAT, receive_rank, tag, MPI_COMM_WORLD, &status);
         }
