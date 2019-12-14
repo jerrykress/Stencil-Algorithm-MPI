@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --nodes 2
-#SBATCH --ntasks-per-node 32
+#SBATCH --ntasks-per-node 28
 #SBATCH --partition veryshort
 #SBATCH --reservation COMS30005
 #SBATCH --account COMS30005
